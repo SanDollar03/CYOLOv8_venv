@@ -9,13 +9,15 @@ import pandas as pd
 import time
 import csv
 from collections import deque  # データを保持するためのデックをインポート
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 class YOLOApp:
     def __init__(self, root):
         # ルートウィンドウの初期設定
         self.root = root
         self.root.title("CYOLOv8 Real-Time Detection / トヨタ自動車株式会社 高杉 旭 問い合わせ先：akira_takasugi@mail.toyota.co.jp")
-        self.window_width = 1200
+        self.window_width = 1600
         self.window_height = 635
 
         # ウィンドウサイズを設定し、スクリーン中央に配置
@@ -24,22 +26,6 @@ class YOLOApp:
         # フォントの定義
         self.title_font = ctk.CTkFont(family="Brush Script MT", size=40, weight="bold")
         self.default_font = ctk.CTkFont(family="Meiryo", size=12)
-
-        # カメラウィンドウフレームの作成（サイズを600×480に設定）
-        self.camera_frame = ctk.CTkFrame(root, width=600, height=480)
-        self.camera_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
-
-        # カメラのフィードを表示するラベルの作成
-        self.camera_label = ctk.CTkLabel(self.camera_frame, text="", font=self.default_font)
-        self.camera_label.pack()
-
-        # モデルとカメラ情報を表示するラベルの作成
-        self.info_label = ctk.CTkLabel(self.camera_frame, text="", font=self.default_font, anchor="w", width=600, padx=10)
-        self.info_label.pack(pady=(5, 0), fill="x")  # 上下のパディングを狭くする
-
-        # 解説文を表示するラベルの作成
-        self.description_label = ctk.CTkLabel(self.camera_frame, text="", font=self.default_font, anchor="w", wraplength=600, width=600, padx=10)
-        self.description_label.pack(pady=(5, 0), fill="x")  # 上下のパディングを狭くする
 
         # モデルリストフレームの作成
         self.model_frame = ctk.CTkFrame(root)
@@ -86,6 +72,26 @@ class YOLOApp:
         self.conf_label = ctk.CTkLabel(self.model_frame, text=f"Conf: {self.conf_var.get():.2f}", font=self.default_font)
         self.conf_label.pack(pady=(0, 10))
 
+        # カメラウィンドウフレームの作成（サイズを600×480に設定）
+        self.camera_frame = ctk.CTkFrame(root, width=600, height=480)
+        self.camera_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
+
+        # カメラのフィードを表示するラベルの作成
+        self.camera_label = ctk.CTkLabel(self.camera_frame, text="", font=self.default_font)
+        self.camera_label.pack()
+
+        # モデルとカメラ情報を表示するラベルの作成
+        self.info_label = ctk.CTkLabel(self.camera_frame, text="", font=self.default_font, anchor="w", width=600, padx=10)
+        self.info_label.pack(pady=(5, 0), fill="x")  # 上下のパディングを狭くする
+
+        # 解説文を表示するラベルの作成
+        self.description_label = ctk.CTkLabel(self.camera_frame, text="", font=self.default_font, anchor="w", wraplength=600, width=600, padx=10)
+        self.description_label.pack(pady=(5, 0), fill="x")  # 上下のパディングを狭くする
+
+        # 散布図グラフフレームの作成
+        self.scatter_frame = ctk.CTkFrame(root, width=600, height=480)
+        self.scatter_frame.grid(row=0, column=2, padx=10, pady=10, sticky="nsew")
+
         # CSVファイルからモデルの解説文を読み込む
         self.model_descriptions = self.load_model_descriptions(os.path.join(os.path.dirname(__file__), 'model_descriptions.csv'))
 
@@ -108,7 +114,11 @@ class YOLOApp:
         # ログファイルの設定
         self.log_file = os.path.join(os.path.dirname(__file__), 'detection_log.csv')
         self.detections = deque(maxlen=10000)  # 最新10000件を保持するデックを初期化
-        self.load_existing_logs()
+        self.reset_log_file()  # 起動時にログファイルをリセット
+
+        # 散布図の初期表示と定期更新
+        self.update_scatter_plot()
+        self.update_scatter_plot_periodically()
 
     def set_geometry(self):
         # ウィンドウサイズを設定し、スクリーン中央に配置
@@ -162,29 +172,68 @@ class YOLOApp:
         description = self.model_descriptions.get(selected_model, "No description available.")
         self.description_label.configure(text=description)
 
-    def load_existing_logs(self):
-        # 既存のログファイルを読み込む
-        if os.path.exists(self.log_file):
-            with open(self.log_file, mode='r') as file:
-                reader = csv.reader(file)
-                next(reader)  # ヘッダーをスキップ
-                for row in reader:
-                    if len(self.detections) < 10000:
-                        self.detections.append(row)
-
-    def write_log_header(self):
-        # CSVログファイルにヘッダーを書き込む
+    def reset_log_file(self):
+        # ログファイルをリセット
         with open(self.log_file, mode='w', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(["Time", "ClassID", "ClassName", "X", "Y", "Width", "Height"])
+        self.detections.clear()
 
     def log_detection(self, detection):
         # 検出結果をデックに追加し、CSVファイルに記録
         self.detections.append(detection)
         with open(self.log_file, mode='w', newline='') as file:
             writer = csv.writer(file)
-            self.write_log_header()  # ヘッダーを書き込む
+            writer.writerow(["Time", "ClassID", "ClassName", "X", "Y", "Width", "Height"])  # ヘッダーを書き込む
             writer.writerows(self.detections)
+
+    def update_scatter_plot(self):
+        # 散布図を更新
+        if not os.path.exists(self.log_file):
+            return
+
+        df = pd.read_csv(self.log_file)
+        if df.empty:
+            return
+
+        fig, ax = plt.subplots()
+
+        # 背景色を黒に設定
+        fig.patch.set_facecolor('black')
+        ax.set_facecolor('black')
+
+        try:
+            for class_name, group in df.groupby(df.columns[2]):  # ClassName列を3番目の列として指定
+                ax.scatter(group[df.columns[3]], group[df.columns[4]], label=class_name)  # Xは4番目の列、Yは5番目の列
+
+            ax.set_xlabel("X", color='white')
+            ax.set_ylabel("Y", color='white')
+            ax.legend(title="ClassName", facecolor='black', edgecolor='white', title_fontsize='large', labelcolor='white')
+
+            # 軸の色を白に設定
+            ax.tick_params(axis='x', colors='white')
+            ax.tick_params(axis='y', colors='white')
+
+            # 軸の線の色を白に設定
+            ax.spines['bottom'].set_color('white')
+            ax.spines['left'].set_color('white')
+
+            ax.invert_yaxis()  # Y軸を上下反転
+        except KeyError:
+            print("ClassName, X, または Y 列が見つかりません。CSVファイルの内容を確認してください。")
+            return
+
+        for widget in self.scatter_frame.winfo_children():
+            widget.destroy()
+
+        canvas = FigureCanvasTkAgg(fig, master=self.scatter_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+
+    def update_scatter_plot_periodically(self):
+        # 5秒ごとに散布図を更新
+        self.update_scatter_plot()
+        self.root.after(5000, self.update_scatter_plot_periodically)
 
     def update_frame(self):
         # フレームを更新し続けるスレッド
@@ -209,18 +258,18 @@ class YOLOApp:
                 self.camera_label.imgtk = imgtk
                 self.camera_label.configure(image=imgtk)
 
-                # 検出結果をCSVにログとして保存
-                for result in results[0].boxes.data:
-                    class_id = int(result[5])
-                    class_name = results[0].names[class_id]
-                    x, y, w, h = map(int, result[:4])
-                    timestamp = time.strftime("%Y%m%d%H%M%S")
-                    detection = [timestamp, class_id, class_name, x, y, w, h]
-                    self.log_detection(detection)
-
-            self.root.update()
+            self.root.update_idletasks()  # ウィンドウの更新を滑らかにするために追加
             elapsed_time = time.time() - start_time
             time.sleep(max(0, 0.033 - elapsed_time))  # 1フレームあたり約30fpsになるように調整
+
+            # 検出結果をCSVにログとして保存
+            for result in results[0].boxes.data:
+                class_id = int(result[5])
+                class_name = results[0].names[class_id]
+                x, y, w, h = map(int, result[:4])
+                timestamp = time.strftime("%Y%m%d%H%M%S")
+                detection = [timestamp, class_id, class_name, x, y, w, h]
+                self.log_detection(detection)
 
     def on_closing(self):
         # ウィンドウを閉じるときの処理
