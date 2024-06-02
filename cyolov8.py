@@ -10,6 +10,7 @@ import time
 
 class YOLOApp:
     def __init__(self, root):
+        # ルートウィンドウの初期設定
         self.root = root
         self.root.title("CYOLOv8 Real-Time Detection / トヨタ自動車株式会社 高杉 旭 問い合わせ先：akira_takasugi@mail.toyota.co.jp")
         self.window_width = 1200
@@ -103,6 +104,7 @@ class YOLOApp:
         self.update_description_label()  # 初期表示のために追加
 
     def set_geometry(self):
+        # ウィンドウサイズを設定し、スクリーン中央に配置
         self.root.geometry(f'{self.window_width}x{self.window_height}')
         self.root.update_idletasks()
         x = (self.root.winfo_screenwidth() // 2) - (self.window_width // 2)
@@ -110,6 +112,7 @@ class YOLOApp:
         self.root.geometry(f'{self.window_width}x{self.window_height}+{x}+{y}')
 
     def load_model_descriptions(self, file_path):
+        # モデルの解説文をCSVファイルから読み込む
         try:
             df = pd.read_csv(file_path)
             return dict(zip(df['model'], df['description']))
@@ -118,6 +121,7 @@ class YOLOApp:
             return {}
 
     def switch_model(self):
+        # モデルを切り替える
         selected_model = self.model_var.get()
         model_path = os.path.join(self.model_dir, selected_model)
         self.model = YOLO(model_path)
@@ -126,6 +130,7 @@ class YOLOApp:
         print(f"Switched to model: {selected_model}")
 
     def switch_camera(self):
+        # カメラを切り替える
         camera_index = int(self.camera_var.get())
         self.cap.release()
         self.cap = cv2.VideoCapture(camera_index)
@@ -133,21 +138,25 @@ class YOLOApp:
         print(f"Switched to camera: {camera_index}")
 
     def update_conf_label(self, value):
+        # スライダーの値を更新
         self.conf_label.configure(text=f"Conf: {float(value):.2f}")
         self.update_info_label()
 
     def update_info_label(self):
+        # モデル、カメラ、信頼度の情報を更新
         selected_model = self.model_var.get()
         selected_camera = self.camera_var.get()
         conf_value = self.conf_var.get()
         self.info_label.configure(text=f"Selected Model: {selected_model} / Selected Camera: {selected_camera} / Conf: {conf_value:.2f}")
 
     def update_description_label(self, event=None):
+        # モデルの解説文を更新
         selected_model = self.model_var.get()
         description = self.model_descriptions.get(selected_model, "No description available.")
         self.description_label.configure(text=description)
 
     def update_frame(self):
+        # フレームを更新し続けるスレッド
         while self.running:
             start_time = time.time()  # 現在の時刻を取得
             ret, frame = self.cap.read()
@@ -174,12 +183,14 @@ class YOLOApp:
             time.sleep(max(0, 0.033 - elapsed_time))  # 1フレームあたり約30fpsになるように調整
 
     def on_closing(self):
+        # ウィンドウを閉じるときの処理
         self.running = False
         self.thread.join()
         self.cap.release()
         self.root.destroy()
 
 if __name__ == "__main__":
+    # アプリケーションのメインルーチン
     ctk.set_appearance_mode("dark")
     root = ctk.CTk()
     app = YOLOApp(root)
