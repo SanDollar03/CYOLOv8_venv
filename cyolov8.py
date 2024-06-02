@@ -7,6 +7,8 @@ import threading
 import os
 import pandas as pd
 import time
+import csv
+from collections import deque  # データを保持するためのデックをインポート
 
 class YOLOApp:
     def __init__(self, root):
@@ -23,8 +25,8 @@ class YOLOApp:
         self.title_font = ctk.CTkFont(family="Brush Script MT", size=40, weight="bold")
         self.default_font = ctk.CTkFont(family="Meiryo", size=12)
 
-        # カメラウィンドウフレームの作成（サイズを1.5倍に拡大）
-        self.camera_frame = ctk.CTkFrame(root, width=900, height=540)
+        # カメラウィンドウフレームの作成（サイズを600×480に設定）
+        self.camera_frame = ctk.CTkFrame(root, width=600, height=480)
         self.camera_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
 
         # カメラのフィードを表示するラベルの作成
@@ -32,12 +34,12 @@ class YOLOApp:
         self.camera_label.pack()
 
         # モデルとカメラ情報を表示するラベルの作成
-        self.info_label = ctk.CTkLabel(self.camera_frame, text="", font=self.default_font, anchor="w")
-        self.info_label.pack(pady=(5, 0))  # 上下のパディングを狭くする
+        self.info_label = ctk.CTkLabel(self.camera_frame, text="", font=self.default_font, anchor="w", width=600, padx=10)
+        self.info_label.pack(pady=(5, 0), fill="x")  # 上下のパディングを狭くする
 
-        # 解説文を表示するラベルの作成（横幅をカメラウィンドウの1.5倍に設定）
-        self.description_label = ctk.CTkLabel(self.camera_frame, text="", font=self.default_font, anchor="w", wraplength=900)
-        self.description_label.pack(pady=(5, 0))  # 上下のパディングを狭くする
+        # 解説文を表示するラベルの作成
+        self.description_label = ctk.CTkLabel(self.camera_frame, text="", font=self.default_font, anchor="w", wraplength=600, width=600, padx=10)
+        self.description_label.pack(pady=(5, 0), fill="x")  # 上下のパディングを狭くする
 
         # モデルリストフレームの作成
         self.model_frame = ctk.CTkFrame(root)
@@ -103,6 +105,11 @@ class YOLOApp:
         self.update_info_label()  # 初期表示のために追加
         self.update_description_label()  # 初期表示のために追加
 
+        # ログファイルの設定
+        self.log_file = os.path.join(os.path.dirname(__file__), 'detection_log.csv')
+        self.detections = deque(maxlen=10000)  # 最新10000件を保持するデックを初期化
+        self.load_existing_logs()
+
     def set_geometry(self):
         # ウィンドウサイズを設定し、スクリーン中央に配置
         self.root.geometry(f'{self.window_width}x{self.window_height}')
@@ -155,13 +162,37 @@ class YOLOApp:
         description = self.model_descriptions.get(selected_model, "No description available.")
         self.description_label.configure(text=description)
 
+    def load_existing_logs(self):
+        # 既存のログファイルを読み込む
+        if os.path.exists(self.log_file):
+            with open(self.log_file, mode='r') as file:
+                reader = csv.reader(file)
+                next(reader)  # ヘッダーをスキップ
+                for row in reader:
+                    if len(self.detections) < 10000:
+                        self.detections.append(row)
+
+    def write_log_header(self):
+        # CSVログファイルにヘッダーを書き込む
+        with open(self.log_file, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["Time", "ClassID", "ClassName", "X", "Y", "Width", "Height"])
+
+    def log_detection(self, detection):
+        # 検出結果をデックに追加し、CSVファイルに記録
+        self.detections.append(detection)
+        with open(self.log_file, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            self.write_log_header()  # ヘッダーを書き込む
+            writer.writerows(self.detections)
+
     def update_frame(self):
         # フレームを更新し続けるスレッド
         while self.running:
             start_time = time.time()  # 現在の時刻を取得
             ret, frame = self.cap.read()
             if ret:
-                frame = cv2.resize(frame, (900, 540))  # サイズを1.5倍に設定
+                frame = cv2.resize(frame, (600, 480))  # サイズを600×480に設定
 
                 if self.flip_var.get():
                     frame = cv2.flip(frame, 1)
@@ -177,7 +208,16 @@ class YOLOApp:
 
                 self.camera_label.imgtk = imgtk
                 self.camera_label.configure(image=imgtk)
-            
+
+                # 検出結果をCSVにログとして保存
+                for result in results[0].boxes.data:
+                    class_id = int(result[5])
+                    class_name = results[0].names[class_id]
+                    x, y, w, h = map(int, result[:4])
+                    timestamp = time.strftime("%Y%m%d%H%M%S")
+                    detection = [timestamp, class_id, class_name, x, y, w, h]
+                    self.log_detection(detection)
+
             self.root.update()
             elapsed_time = time.time() - start_time
             time.sleep(max(0, 0.033 - elapsed_time))  # 1フレームあたり約30fpsになるように調整
