@@ -1,0 +1,9 @@
+#ライブラリインストール
+pip install customtkinter opencv-python ultralytics Pillow pandas
+
+#フォルダ構成
+CYOLOv8_venv
+  + model
+      + ptファイル
+  + cyolov8.py
+  + model_descriptions.csv
