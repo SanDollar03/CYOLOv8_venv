@@ -10,7 +10,7 @@ a = Analysis(
     ],
     datas=[
         ('C:\\Users\\PJ\\python_venv\\CYOLOv8_venv\\Lib\\site-packages\\ultralytics\\cfg\\default.yaml', 'ultralytics\\cfg'),
-        ('C:\\Users\\PJ\\python_venv\\CYOLOv8_venv\\model', 'model')
+        ('model/*', 'model'), ('model_descriptions.csv', '.')
     ],
     hiddenimports=['cv2', 'PIL.Image', 'ultralytics'],
     hookspath=[],
