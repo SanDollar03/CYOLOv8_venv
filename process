@@ -10,4 +10,5 @@ CYOLOv8_venv
 
 #PyInstallerでexe化
 1. pyinstaller --onefile --windowed --add-data "C:\\Users\PJ\\python_venv\\CYOLOv8_venv\\Lib\\site-packages\\ultralytics\\cfg\\default.yaml;ultralytics\\cfg" --add-data "C:\\Users\\PJ\\python_venv\\CYOLOv8_venv\\model;model" cyolov8.py
+  * pyinstaller --onefile --windowed cyolov8.py
 2. pyinstaller yolo_app.spec
